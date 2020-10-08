@@ -12,6 +12,7 @@ import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import javax.swing.filechooser.FileSystemView;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.net.URLDecoder;
@@ -32,6 +33,39 @@ public final class FileTools {
     public static final String FILE_TYPE_TXT = ".txt";
     public static final String FILE_TYPE_XLS = ".xls";
     public static final String FILE_TYPE_DOC = ".doc";
+    public static final String DEFAULT_WORK_ENV_PATH="guoke";
+    public static final String DEFAULT_WORK_ENV_FILE="work.env";
+
+    /**
+     * 得到我的文档
+     * @return
+     */
+    public static File getDocumentPath() {
+        FileSystemView fsv = FileSystemView.getFileSystemView();
+        fsv.getHomeDirectory(); //这便是读取桌面路径的方法了
+        File defaultDirectory = fsv.getDefaultDirectory();//这便是读取我的文档路径的方法
+        System.out.println(defaultDirectory);
+        return defaultDirectory;
+    }
+
+    /**
+     * 读取txt文件内容
+     * @param path
+     * @return
+     */
+    public static List<String> readTxtFile(Path path) throws IOException {
+        List<String> content = new ArrayList<>();
+        BufferedReader bufferedReader = Files.newBufferedReader(path, Charset.forName("gbk"));
+        String line;
+        while ((line = bufferedReader.readLine()) != null) {
+            if(!"".equals(line.trim())){
+                content.add(line.trim());
+            }
+        }
+        bufferedReader.close();
+        return content;
+    }
+
 
     /**
      * 写入信息到文件
@@ -108,7 +142,7 @@ public final class FileTools {
             XSSFRow row = sheet.createRow(i);
             Field[] declaredFields = clazz.getDeclaredFields();
             CodeOrder entity = collection.get(i);
-            if (entity==null){
+            if (entity == null) {
                 continue;
             }
             for (int j = 0; j < declaredFields.length; j++) {

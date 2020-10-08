@@ -1,15 +1,20 @@
 package cn.ms22.interfaces;
 
 import cn.ms22.GuokeApplication;
+import cn.ms22.utils.FileTools;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.filechooser.FileSystemView;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -79,7 +84,7 @@ public class MainPlant extends JFrame {
             this.appendLogInfo(runEnv);
             textRunEnv.setText(runEnv);
             textRunEnv.setEditable(false);
-            //
+            //默认
             textGuokeJar.setEnabled(false);
             textParallels.setText("5");
             textDriver.setText("C:\\Users\\Administrator\\Desktop\\guoke\\chromedriver.exe");
@@ -88,8 +93,51 @@ public class MainPlant extends JFrame {
             textOutput.setEditable(false);
             textPasswords.setText("C:\\Users\\Administrator\\Desktop\\guoke\\sonkwo.passwd");
             textPasswords.setEditable(false);
+
+            //读取配置文件
+            File defaultDirectory = FileTools.getDocumentPath();
+            Path workEnv = Paths.get(defaultDirectory.getPath())
+                    .resolve(FileTools.DEFAULT_WORK_ENV_PATH)
+                    .resolve(FileTools.DEFAULT_WORK_ENV_FILE);
+            LogBuffer.put("默认环境地址：" + workEnv.toString());
+            try {
+                List<String> configs = FileTools.readTxtFile(workEnv);
+                configs.forEach(s -> {
+                    String[] arTmp = s.split("=");
+                    String argName = arTmp[0];
+                    String value =arTmp[1];
+                    paraSplit(argName, value);
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+                LogBuffer.put(e.getMessage());
+            }
         });
+
         configThread.start();
+    }
+
+    private void paraSplit(String argName, String value) {
+        switch (argName.trim().isEmpty() ? "error" : argName.trim().toLowerCase()) {
+            case "driver":
+                textDriver.setText(value);
+                LogBuffer.put("驱动位置:" + value);
+                break;
+            case "parallels":
+                textParallels.setText(value);
+                LogBuffer.put("并行线程数量:" + value);
+                break;
+            case "passwords":
+                textPasswords.setText(value);
+                LogBuffer.put("用户名路径:" + value);
+                break;
+            case "output":
+                textOutput.setText(value);
+                LogBuffer.put("输出路径:" + value);
+                break;
+            default:
+                LogBuffer.put("其他参数：" + argName);
+        }
     }
 
     /**
@@ -152,7 +200,7 @@ public class MainPlant extends JFrame {
         this.add(layeredPane);
 
         //主界面
-        mainPanel.setBounds(15, 10, 715, 650);
+        mainPanel.setBounds(15, 10, 725, 660);
         mainPanel.setBackground(mainPaneColor);
         mainPanel.setLayout(null);
         layeredPane.add(mainPanel);
@@ -201,8 +249,8 @@ public class MainPlant extends JFrame {
         mainPanel.add(scrollLogPanel);
 
         textAreaLog.setLineWrap(true);
-        textAreaLog.setColumns(59);
-        textAreaLog.setRows(18);
+        textAreaLog.setColumns(58);
+        textAreaLog.setRows(16);
         textAreaLog.setEditable(false);
 
         //资源管理器选择
@@ -260,26 +308,7 @@ public class MainPlant extends JFrame {
                     } catch (ArrayIndexOutOfBoundsException e1) {
                         continue;
                     }
-                    switch (argName.trim().isEmpty() ? "error" : argName.trim().toLowerCase()) {
-                        case "driver":
-                            textDriver.setText(value);
-                            LogBuffer.put("驱动位置:" + value);
-                            break;
-                        case "parallels":
-                            textParallels.setText(value);
-                            LogBuffer.put("并行线程数量:" + value);
-                            break;
-                        case "passwords":
-                            textPasswords.setText(value);
-                            LogBuffer.put("用户名路径:" + value);
-                            break;
-                        case "output":
-                            textOutput.setText(value);
-                            LogBuffer.put("输出路径:" + value);
-                            break;
-                        default:
-                            LogBuffer.put("其他参数：" + argName);
-                    }
+                    paraSplit(argName, value);
                 }
             }
         });
@@ -366,6 +395,8 @@ public class MainPlant extends JFrame {
             args.add("output=" + output);
             args.add("place=" + place);
 
+            saveConfig(args);
+
             new Thread(() -> {
                 GuokeApplication.run0(args.toArray(new String[0]));
             }).start();
@@ -378,15 +409,36 @@ public class MainPlant extends JFrame {
 
         //退出
         buttonCancel.addActionListener(e -> {
+
             System.exit(0);
         });
 
         //主界面设置
-        this.setBounds(0, 0, 750, 740);
+        this.setBounds(0, 0, 780, 740);
         this.setLocationRelativeTo(null);
         this.setVisible(true);
         this.setResizable(false);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    /**
+     * 保存运行配置
+     * @param args
+     */
+    private void saveConfig(List<String> args) {
+        File defaultDirectory = FileTools.getDocumentPath();
+        Path workEnv = Paths.get(defaultDirectory.getPath())
+                .resolve(FileTools.DEFAULT_WORK_ENV_PATH)
+                .resolve(FileTools.DEFAULT_WORK_ENV_FILE);
+        LogBuffer.put("默认环境地址：" + workEnv.toString());
+        args.forEach(s -> {
+            try {
+                FileTools.appendInfo(workEnv, s);
+            } catch (IOException e) {
+                e.printStackTrace();
+                LogBuffer.put(e.getMessage());
+            }
+        });
     }
 
     private static class ExtensionFileFilter extends FileFilter {
