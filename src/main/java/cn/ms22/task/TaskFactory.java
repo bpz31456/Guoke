@@ -25,11 +25,11 @@ public class TaskFactory {
      * @param countDownLatch
      * @return
      */
-    public static Runnable getOrderTaskInstance(PassWord passwd, Semaphore semaphore, CountDownLatch countDownLatch) {
+    public static Runnable getOrderTaskInstance(PassWord passwd,String place, Semaphore semaphore, CountDownLatch countDownLatch) {
         String outputPath = ApplicationConfig.getInstance().getOutput();
         Path path = Paths.get(outputPath).resolve(DateTools.currentDate()).resolve(passwd.getUsername() + FileTools.FILE_TYPE_TXT);
         DataPersistence dataPersistence = new TxtPersistence(path);
-        return new OrderTask(passwd.getUsername(), passwd.getPassword(), semaphore, dataPersistence, countDownLatch);
+        return new OrderTask(passwd.getUsername(), passwd.getPassword(),place, semaphore, dataPersistence, countDownLatch);
     }
 
     public static Runnable getRegisterTask() {

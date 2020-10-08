@@ -13,7 +13,6 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.CapabilityType;
-import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
@@ -28,23 +27,24 @@ import java.util.concurrent.TimeUnit;
  * @author baopz
  */
 public class OrderTask implements Runnable {
-    private Logger logger = LoggerFactory.getLogger(OrderTask.class);
     private static String driverConfig = ApplicationConfig.getInstance().getDriver();
     private String username;
     private String password;
 
     private Semaphore semaphore;
     private DataPersistence dataPersistence;
-
+    private String place;
     private CountDownLatch countDownLatch;
 
     public OrderTask(String username,
                      String password,
+                     String place,
                      Semaphore semaphore,
                      DataPersistence dataPersistence,
                      CountDownLatch countDownLatch) {
         this.username = username;
         this.password = password;
+        this.place = place;
         this.semaphore = semaphore;
         this.dataPersistence = dataPersistence;
         this.countDownLatch = countDownLatch;
@@ -70,10 +70,10 @@ public class OrderTask implements Runnable {
             passwd.setPassword(password);
             passwd.setUsername(username);
             QueueLR.getInstance().add(passwd);
-            logger.error("帐号{}，失败原因:{}", username, e.getMessage());
+            LoggerFactory.getLogger(OrderTask.class).error("帐号{}，失败原因:{}", username, e.getMessage());
         } finally {
             semaphore.release();
-            logger.debug("semaphore释放。");
+            LoggerFactory.getLogger(OrderTask.class).debug("semaphore释放。");
             countDownLatch.countDown();
             if (driver != null) {
                 driver.close();
@@ -82,49 +82,72 @@ public class OrderTask implements Runnable {
     }
 
     /**
-     * @since version 0.1.2
      * @param driver
      * @throws Exception
+     * @since version 0.1.2
      */
     private void run1(WebDriver driver) throws Exception {
-        logger.info("用户【{}】进入混合站点", username);
+        //进入混合站点
         login(driver, QueueL.MIXTURE);
-        mixtureDetail(driver);
+        TimeUnit.SECONDS.sleep(5);
+        //分析站点
+        detail(driver);
     }
 
-    private void mixtureDetail(WebDriver driver) throws Exception {
-        //国内站点
-        logger.info("用户{}进入混合站点国内分站点", username);
-        TimeUnit.SECONDS.sleep(1);
-        driver.get("https://www.sonkwo.com/setting/game_factory?area=cn");
-        TimeUnit.SECONDS.sleep(1);
-        List<CodeOrder> codeOrders = mixtureAnalysisDetail(driver);
-        logger.debug("混合站点国内分站点获取数据{}",codeOrders.size());
-
-        //国际站点
-        logger.info("用户{}进入混合站点国际分站点", username);
-        driver.get("https://www.sonkwo.com/setting/game_factory?area=hk");
-        TimeUnit.SECONDS.sleep(1);
-        List<CodeOrder> codeOrders1 =  mixtureAnalysisDetail(driver);
-        logger.debug("混合站点国际分站点获取数据{}",codeOrders1.size());
-        codeOrders.addAll(codeOrders1);
-
-        logger.debug("混合站点国际站点总数据{}",codeOrders.size());
-        //输出
+    private void detail(WebDriver driver) throws Exception {
+        List<CodeOrder> codeOrders = new ArrayList<>(ApplicationConfig.getInstance().getPasswdsCount() * (1 << 3));
+        switch (place) {
+            case QueueL.OUTER_QUEUE:
+                //国际站点
+                codeOrders.addAll(getOuterCodeOrders(driver));
+                break;
+            case QueueL.INNER_QUEUE:
+                //国内站点
+                codeOrders.addAll(getInnerCodeOrders(driver));
+                break;
+            case QueueL.MIXTURE:
+                codeOrders.addAll(getOuterCodeOrders(driver));
+                codeOrders.addAll(getInnerCodeOrders(driver));
+                LoggerFactory.getLogger(OrderTask.class).debug("混合站点总数据{}", codeOrders.size());
+                break;
+            default:
+                LoggerFactory.getLogger(OrderTask.class).error("进入站点出错");
+        }
+        //输出，持久化
         try {
             if (dataPersistence != null) {
-                logger.info("用户【{}】混合站点开始输出。", username);
-                dataPersistence.save(codeOrders, username + QueueL.MIXTURE + FileTools.FILE_TYPE_TXT);
-                QueueL.getInstance(QueueL.MIXTURE).addAll(codeOrders);
+                LoggerFactory.getLogger(OrderTask.class).info("用户【{}】开始输出。", username);
+                dataPersistence.save(codeOrders, username + place + FileTools.FILE_TYPE_TXT);
+                QueueL.getInstance(place).addAll(codeOrders);
             }
         } catch (IOException e1) {
-            logger.error("持久化失败"+e1.getMessage());
+            LoggerFactory.getLogger(OrderTask.class).error("持久化失败" + e1.getMessage());
             throw e1;
         }
-        logger.info("用户【{}】混合站点输出完成。", username);
+        LoggerFactory.getLogger(OrderTask.class).info("用户【{}】输出完成。", username);
     }
 
-    private List<CodeOrder> mixtureAnalysisDetail(WebDriver driver) throws Exception {
+    private List<CodeOrder> getOuterCodeOrders(WebDriver driver) throws Exception {
+        LoggerFactory.getLogger(OrderTask.class).info("用户{}国际分站点", username);
+        TimeUnit.SECONDS.sleep(1);
+        driver.get("https://www.sonkwo.com/setting/game_factory?area=hk");
+        TimeUnit.SECONDS.sleep(5);
+        List<CodeOrder> codeOrders = analysisDetail(driver);
+        LoggerFactory.getLogger(OrderTask.class).debug("国际分站点获取数据{}", codeOrders.size());
+        return codeOrders;
+    }
+
+    private List<CodeOrder> getInnerCodeOrders(WebDriver driver) throws Exception {
+        LoggerFactory.getLogger(OrderTask.class).info("用户{}进入国内分站点", username);
+        TimeUnit.SECONDS.sleep(1);
+        driver.get("https://www.sonkwo.com/setting/game_factory?area=cn");
+        TimeUnit.SECONDS.sleep(5);
+        List<CodeOrder> codeOrders = analysisDetail(driver);
+        LoggerFactory.getLogger(OrderTask.class).debug("国内分站点获取数据{}", codeOrders.size());
+        return codeOrders;
+    }
+
+    private List<CodeOrder> analysisDetail(WebDriver driver) throws Exception {
         List<CodeOrder> codeOrders = new ArrayList<>();
         //处理分页信息
         WebElement pageInfo = null;
@@ -134,17 +157,27 @@ public class OrderTask implements Runnable {
             hasNext = true;
         } catch (Exception e) {
             //ignore Don't have pageInfo
-            logger.info("没有分页信息");
+            LoggerFactory.getLogger(OrderTask.class).info("div.gamefactory-game-container没有分页信息,尝试SK-pagination-container");
+            try {
+                pageInfo = driver.findElement(By.cssSelector("#content-wrapper > div > div.SK-community-content > div > div.SK-tabs-content.SK-user-center-tabs-content > div > div.SK-pagination-container"));
+                hasNext = true;
+            } catch (Exception e1) {
+                //ignore Don't have pageInfo
+                LoggerFactory.getLogger(OrderTask.class).info("div.SK-pagination-container没有分页信息");
+            }
         }
-        mixtureOnePageDetail(driver, codeOrders);
+
+        //提取
+        otherOnePageDetail(driver, codeOrders);
         while (hasNext) {
             //点击下一页
             try {
+                TimeUnit.MILLISECONDS.sleep(1000);
                 pageInfo.findElement(By.cssSelector("button:last-child")).click();
-                TimeUnit.MILLISECONDS.sleep(500);
-                mixtureOnePageDetail(driver, codeOrders);
+                TimeUnit.MILLISECONDS.sleep(4000);
+                otherOnePageDetail(driver, codeOrders);
             } catch (Exception e) {
-                logger.warn("最后一页结束");
+                LoggerFactory.getLogger(OrderTask.class).warn("最后一页结束");
                 hasNext = false;
             }
         }
@@ -153,12 +186,13 @@ public class OrderTask implements Runnable {
 
     /**
      * 增加扩展
-     * @since 0.3.2
+     *
      * @param driver
      * @param codeOrders
      * @throws InterruptedException
+     * @since 0.3.2
      */
-    private void mixtureOnePageDetail(WebDriver driver, List<CodeOrder> codeOrders) throws InterruptedException {
+    private void otherOnePageDetail(WebDriver driver, List<CodeOrder> codeOrders) throws InterruptedException {
         List<WebElement> elements = driver.findElements(By.cssSelector("#content-wrapper > div > div.SK-community-content > div > div.SK-tabs-content.SK-user-center-tabs-content > div > div.gamefactory-game-container > div.game-factory-list-container "));
         for (int i = 1; i <= elements.size(); i++) {
             WebElement tmp = elements.get(i - 1);
@@ -169,16 +203,20 @@ public class OrderTask implements Runnable {
                 String platform = element.findElement(By.cssSelector("div.game-type")).getText();
                 element.findElement(By.cssSelector("div.btn.steam-key")).click();
 
-                TimeUnit.MILLISECONDS.sleep(1000);
+                if (place.equals(QueueL.INNER_QUEUE)) {
+                    TimeUnit.MILLISECONDS.sleep(1000);
+                } else {
+                    TimeUnit.MILLISECONDS.sleep(6000);
+                }
                 List<WebElement> elementList = driver.findElements(By.cssSelector("#content-wrapper > div > div.SK-community-content > div > div.SK-tabs-content.SK-user-center-tabs-content > div > div.gamefactory-game-container > div:nth-child(" + i + ") > div.overlayfixed.undefined > div > div > div.overlaybox-body > div > div.game-key-list > div.game-key-container"));
-                logger.info(name + elementList.size() + "");
-                if(elementList.size()==0){
+                LoggerFactory.getLogger(OrderTask.class).info(name + elementList.size() + "");
+                if (elementList.size() == 0) {
                     continue;
-                }else{
+                } else {
                     //取本体
                     String code = elementList.get(0).findElement(By.cssSelector("div.key-code")).getText();
-                    CodeOrder codeOrder = CodeOrderFactory.create(username,name,code,platform);
-                    if(codeOrders.contains(codeOrder)){
+                    CodeOrder codeOrder = CodeOrderFactory.create(username, name, code, platform);
+                    if (codeOrders.contains(codeOrder)) {
                         throw new InterruptedException("已经获取最后一页数据，分页获取完成。");
                     }
                     //设置dlc
@@ -191,23 +229,23 @@ public class OrderTask implements Runnable {
                     //添加
                     codeOrders.add(codeOrder);
                 }
-                TimeUnit.MILLISECONDS.sleep(500);
+                TimeUnit.MILLISECONDS.sleep(1000);
                 driver.findElement(By.cssSelector("#content-wrapper > div > div.SK-community-content > div > div.SK-tabs-content.SK-user-center-tabs-content > div > div.gamefactory-game-container > div:nth-child(" + i + ") > div.overlayfixed.undefined > div > div > div.overlaybox-body > div > h5 > div > i")).click();
-
-                TimeUnit.SECONDS.sleep(1);
+                TimeUnit.MILLISECONDS.sleep(3000);
             }
         }
+
     }
 
     @Deprecated
     private void run0(WebDriver driver) throws Exception {
         //登录
-        logger.info("用户【{}】进入国内站点", username);
+        LoggerFactory.getLogger(OrderTask.class).info("用户【{}】进入国内站点", username);
         login(driver, QueueL.INNER_QUEUE);
         //国内详情获取
         innerDetail(driver);
 
-        logger.info("用户【{}】进入国际站点", username);
+        LoggerFactory.getLogger(OrderTask.class).info("用户【{}】进入国际站点", username);
         login(driver, QueueL.OUTER_QUEUE);
         //国外详情获取
         outerDetail(driver);
@@ -228,11 +266,11 @@ public class OrderTask implements Runnable {
         List<CodeOrder> codeOrders = singleAnalysisDetail(driver);
         //输出
         if (dataPersistence != null) {
-            logger.info("用户【{}】国际站激活码数据本地化存储。", username);
+            LoggerFactory.getLogger(OrderTask.class).info("用户【{}】国际站激活码数据本地化存储。", username);
             dataPersistence.save(codeOrders, username + QueueL.OUTER_QUEUE + FileTools.FILE_TYPE_TXT);
             QueueL.getInstance(QueueL.OUTER_QUEUE).addAll(codeOrders);
         }
-        logger.info("用户【{}】国际站获取激活码完成。", username);
+        LoggerFactory.getLogger(OrderTask.class).info("用户【{}】国际站获取激活码完成。", username);
     }
 
     /**
@@ -250,11 +288,11 @@ public class OrderTask implements Runnable {
         List<CodeOrder> codeOrders = singleAnalysisDetail(driver);
         //输出
         if (dataPersistence != null) {
-            logger.info("用户【{}】国内站激活码数据本地化存储。", username);
+            LoggerFactory.getLogger(OrderTask.class).info("用户【{}】国内站激活码数据本地化存储。", username);
             dataPersistence.save(codeOrders, username + QueueL.INNER_QUEUE + FileTools.FILE_TYPE_TXT);
             QueueL.getInstance(QueueL.INNER_QUEUE).addAll(codeOrders);
         }
-        logger.info("用户【{}】国内站获取激活码完成。", username);
+        LoggerFactory.getLogger(OrderTask.class).info("用户【{}】国内站获取激活码完成。", username);
     }
 
     @Deprecated
@@ -268,7 +306,7 @@ public class OrderTask implements Runnable {
             hasNext = true;
         } catch (Exception e) {
             //ignore Don't have pageInfo
-            logger.debug("没有分页信息");
+            LoggerFactory.getLogger(OrderTask.class).debug("没有分页信息");
         }
         onePageDetail(driver, codeOrders);
         while (hasNext) {
@@ -278,7 +316,7 @@ public class OrderTask implements Runnable {
                 TimeUnit.MILLISECONDS.sleep(500);
                 onePageDetail(driver, codeOrders);
             } catch (Exception e) {
-                logger.warn("没有最后一页");
+                LoggerFactory.getLogger(OrderTask.class).warn("没有最后一页");
                 hasNext = false;
             }
         }
@@ -305,7 +343,7 @@ public class OrderTask implements Runnable {
 
                 TimeUnit.MILLISECONDS.sleep(300);
                 List<WebElement> elementList = driver.findElements(By.cssSelector("#content-wrapper > div > div.SK-community-content > div > div.SK-tabs-content.SK-user-center-tabs-content > div > div.gamefactory-game-container > div:nth-child(" + i + ") > div.overlayfixed.undefined > div > div > div.overlaybox-body > div > div"));
-                logger.info(name + elementList.size() + "");
+                LoggerFactory.getLogger(OrderTask.class).info(name + elementList.size() + "");
                 for (WebElement webElement : elementList) {
                     CodeOrder codeOrder = new CodeOrder();
 //                    TimeUnit.MILLISECONDS.sleep(500);
@@ -407,7 +445,7 @@ public class OrderTask implements Runnable {
         }
 
         orders.forEach(System.out::println);
-        orders.stream().forEach(o -> logger.debug(o.toString()));
+        orders.stream().forEach(o -> LoggerFactory.getLogger(OrderTask.class).debug(o.toString()));
         return orders;
     }
 
@@ -462,12 +500,14 @@ public class OrderTask implements Runnable {
             case QueueL.INNER_QUEUE:
             case QueueL.MIXTURE:
                 driver.get("https://www.sonkwo.com/sign_in");
+                LoggerFactory.getLogger(OrderTask.class).info("用户【{}】进入混合站点", username);
                 break;
             case QueueL.OUTER_QUEUE:
-                driver.get("http://www.sonkwo.hk/");
+                driver.get("http://www.sonkwo.hk/sign_in");
+                LoggerFactory.getLogger(OrderTask.class).info("用户【{}】进入国际站点", username);
                 break;
             default:
-                logger.error("未知的登录位置，{}", place);
+                LoggerFactory.getLogger(OrderTask.class).error("未知的登录位置，{}", place);
         }
         //等待5s
         TimeUnit.SECONDS.sleep(2);

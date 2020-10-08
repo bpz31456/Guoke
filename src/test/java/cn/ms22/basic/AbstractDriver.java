@@ -23,7 +23,7 @@ public abstract class AbstractDriver {
         TimeUnit.SECONDS.sleep(sec);
     }
     protected ChromeOptions iniChromeOptions() {
-        System.setProperty("webdriver.chrome.driver", "E:\\env\\driver\\2.42\\chromedriver.exe");
+        System.setProperty("webdriver.chrome.driver", "D:\\env\\chromedriver83\\chromedriver.exe");
         ChromeOptions options = new ChromeOptions();
         HashMap<String, Object> chromePrefs = new HashMap<>();
         //后续处理IE下面下载问题

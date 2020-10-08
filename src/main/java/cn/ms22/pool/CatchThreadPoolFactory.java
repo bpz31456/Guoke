@@ -26,6 +26,11 @@ public class CatchThreadPoolFactory {
      * 得到线程池
      */
     public static synchronized ThreadPoolExecutor getInstance(String key, String threadName) {
+        //如果已经shutdown了就需要删除掉
+        ThreadPoolExecutor threadPoolExecutor = poolExecutors.get(key);
+        if (threadPoolExecutor != null && threadPoolExecutor.isShutdown()) {
+            poolExecutors.remove(key);
+        }
         return poolExecutors.computeIfAbsent(key, s -> iniPoolExecutor(threadName));
     }
 
@@ -34,7 +39,7 @@ public class CatchThreadPoolFactory {
     }
 
     private static ThreadPoolExecutor iniSingleThreadPool(String threadName) {
-        ThreadFactoryBuilder factoryBuilder = new ThreadFactoryBuilder().setNameFormat(threadName+"-%d");
+        ThreadFactoryBuilder factoryBuilder = new ThreadFactoryBuilder().setNameFormat(threadName + "-%d");
         ThreadFactory threadFactory = factoryBuilder.build();
         return new ThreadPoolExecutor(1,
                 1, 0L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(1), threadFactory);

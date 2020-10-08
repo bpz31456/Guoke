@@ -10,6 +10,30 @@ public final class ApplicationConfig {
     private String passwords;
     private String runApplication;
     private String output;
+    private String place;
+
+    public int getPasswdsCount() {
+        return passwdsCount;
+    }
+
+    public void setPasswdsCount(int passwdsCount) {
+        this.passwdsCount = passwdsCount;
+    }
+
+    private int passwdsCount;
+
+    @Override
+    public String toString() {
+        return "ApplicationConfig{" +
+                "driver='" + driver + '\'' +
+                ", parallels=" + parallels +
+                ", passwords='" + passwords + '\'' +
+                ", runApplication='" + runApplication + '\'' +
+                ", output='" + output + '\'' +
+                ", place='" + place + '\'' +
+                ", passwdsCount=" + passwdsCount +
+                '}';
+    }
 
     private static ApplicationConfig applicationConfig;
 
@@ -27,6 +51,7 @@ public final class ApplicationConfig {
     public String getDriver() {
         return driver;
     }
+
 
     public String getRunApplication() {
         return runApplication;
@@ -62,5 +87,13 @@ public final class ApplicationConfig {
 
     public void setOutput(String output) {
         this.output = output;
+    }
+
+    public String getPlace() {
+        return place;
+    }
+
+    public void setPlace(String place) {
+        this.place = place;
     }
 }

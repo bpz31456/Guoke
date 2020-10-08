@@ -80,7 +80,9 @@ public class RegisterTask extends AbstractDriver implements Runnable {
             changeDoublePage();
             //录入页面验证码
             inputCode();
-            focusHanWriteInput();
+            //todo 验证码处理
+            webDriver.findElement(By.cssSelector("#nc_4_n1z"));
+            /*focusHanWriteInput();
             //轮询校验
             try {
                 suspend();
@@ -93,7 +95,7 @@ public class RegisterTask extends AbstractDriver implements Runnable {
                 logger.info("获取验证码:{}", lastWebCode);
             } catch (TimeoutException e) {
                 logger.warn(e.getMessage());
-            }
+            }*/
             //刷新页面
             clearInfo();
             sleepSec(1);
@@ -269,7 +271,7 @@ public class RegisterTask extends AbstractDriver implements Runnable {
         webDriver.findElement(By.cssSelector("#email")).sendKeys(lastEmail);
         webDriver.findElement(By.cssSelector("#password")).sendKeys(lastEmail);
         webDriver.findElement(By.cssSelector("#password_confirmation")).sendKeys(lastEmail);
-        webDriver.findElement(By.cssSelector("#content-wrapper > div > div.sign-up-panel > div > div > div > div:nth-child(4) > div:nth-child(2) > div > button")).click();
+        webDriver.findElement(By.cssSelector("#content-wrapper > div > div.sign-up-panel > div > div > div > div:nth-child(3) > div:nth-child(2) > div > button")).click();
         sleepMiSec(500);
     }
 

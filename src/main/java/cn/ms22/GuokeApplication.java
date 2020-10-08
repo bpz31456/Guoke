@@ -10,6 +10,7 @@ import cn.ms22.task.TaskFactory;
 import cn.ms22.utils.DateTools;
 import cn.ms22.utils.FileTools;
 import cn.ms22.utils.PropertiesUtil;
+import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,8 +39,9 @@ public class GuokeApplication {
         ApplicationConfig applicationConfig = ApplicationConfig.getInstance();
         applicationConfig.setDriver(PropertiesUtil.getProperty("guoke.properties", "driver"));
         applicationConfig.setOutput(PropertiesUtil.getProperty("guoke.properties", "output"));
+        applicationConfig.setPlace(PropertiesUtil.getProperty("guoke.properties", "place"));
         String parallels = PropertiesUtil.getProperty("guoke.properties", "parallels");
-        applicationConfig.setParallels(Integer.valueOf(parallels == null ? "0" : parallels));
+        applicationConfig.setParallels(Integer.parseInt(parallels == null ? "2" : parallels));
         applicationConfig.setPasswords(PropertiesUtil.getProperty("guoke.properties", "passwords"));
         applicationConfig.setRunApplication(PropertiesUtil.getProperty("guoke.properties", "runApplication"));
     }
@@ -66,10 +68,17 @@ public class GuokeApplication {
         }
         logger.info("加载客户端接受的参数。");
         assert args != null;
-        if (startBranch != null && startBranch.equals(MAIN_APPLICATION_REGISTER)) {
-            run1(args);
-        } else {
-            run0(args);
+        try {
+            if (startBranch != null && startBranch.equals(MAIN_APPLICATION_REGISTER)) {
+                logger.warn("注册功能维护中，暂不提供服务");
+                //run1(args);
+            } else {
+                run0(args);
+            }
+        } catch (Exception e) {
+            //ignore
+            e.printStackTrace();
+            logger.error("检查运行日志信息{}", e.getMessage());
         }
     }
 
@@ -105,12 +114,14 @@ public class GuokeApplication {
      *
      * @param args
      */
-    private static void run0(String[] args) {
+    public static void run0(String[] args) {
+        logger.debug("args[] size:{}",args.length);
         for (String arg : args) {
             String[] arTmp = arg.split("=");
             String argName = arTmp[0];
+            logger.debug("arg[0]{}",argName);
             String value = arTmp[1];
-            switch (argName) {
+            switch (argName.trim().isEmpty() ? "error" : argName.trim().toLowerCase()) {
                 case "driver":
                     ApplicationConfig.getInstance().setDriver(value);
                     logger.info("驱动位置:{}", value);
@@ -127,30 +138,40 @@ public class GuokeApplication {
                     ApplicationConfig.getInstance().setOutput(value);
                     logger.info("输出路径:{}", value);
                     break;
+                case "place":
+                    ApplicationConfig.getInstance().setPlace(value);
+                    logger.info("输出place:{}", value);
+                    break;
                 default:
                     logger.warn("参数{}有误", argName);
             }
         }
         logger.info("应用启动，任务开始执行。。。");
-        //加载配置参数
 
         //线程池
         ThreadPoolExecutor executor = CatchThreadPoolFactory.getInstance("默认采集线程", "defaultOrderFetch");
 
         //获取用户名，密码
-        List<PassWord> passwds = resolvePassword();
-
-        if (passwds == null) {
+        List<PassWord> passWds = resolvePassword();
+        ApplicationConfig.getInstance().setPasswdsCount(passWds == null ? 0 : passWds.size());
+        if (passWds == null) {
             logger.warn("未发现账户信息。");
             return;
         }
+        //校验配置参数
+        checkApplicationConfig();
 
         //并行
-        Semaphore semaphore = new Semaphore(ApplicationConfig.getInstance().getParallels());
-        CountDownLatch countDownLatch = new CountDownLatch(passwds.size());
+        Semaphore semaphore = new Semaphore(ApplicationConfig.getInstance().getParallels() == 0 ? 1 : ApplicationConfig.getInstance().getParallels());
+        CountDownLatch countDownLatch = new CountDownLatch(passWds.size());
 
-        for (PassWord passwd : passwds) {
-            executor.execute(TaskFactory.getOrderTaskInstance(passwd, semaphore, countDownLatch));
+        //place
+        String place = ApplicationConfig.getInstance().getPlace();
+        place = place == null ? QueueL.MIXTURE : place;
+        ApplicationConfig.getInstance().setPlace(place);
+
+        for (PassWord passwd : passWds) {
+            executor.execute(TaskFactory.getOrderTaskInstance(passwd, place, semaphore, countDownLatch));
         }
 
         //第一次处理
@@ -161,9 +182,8 @@ public class GuokeApplication {
         }
         //持久化
         try {
-            txtInsert(QueueL.INNER_QUEUE);
-            txtInsert(QueueL.OUTER_QUEUE);
-            excelInsert(QueueL.MIXTURE);
+            txtInsert(place);
+            excelInsert(place);
         } catch (IOException e) {
             logger.error("数据持久化失败。");
         } finally {
@@ -176,14 +196,24 @@ public class GuokeApplication {
             logger.info("错误任务保存");
             overflowPath = overflowPath.resolve(DateTools.currentDate() + "errorPasswd" + FileTools.FILE_TYPE_TXT);
             try {
-                FileTools.appendInfo(overflowPath, passwd.toString());
+                FileTools.appendInfo(overflowPath, passwd.getUsername());
             } catch (Exception e) {
                 logger.error("保存未采集帐号数据失败，采用日志方式保存.");
                 for (PassWord p1 : QueueLR.getInstance()) {
-                    logger.warn("位正确采集的帐号信息:{}", p1.toString());
+                    logger.warn("未正确采集的帐号信息:{}", p1.toString());
                 }
             }
         }
+    }
+
+    private static void checkApplicationConfig() {
+        ApplicationConfig instance = ApplicationConfig.getInstance();
+        Assert.assertNotNull(instance.getDriver());
+        Assert.assertNotEquals(instance.getParallels(), 0);
+        Assert.assertNotNull(instance.getOutput());
+        Assert.assertNotNull(instance.getPasswords());
+        Assert.assertNotNull(instance.getRunApplication());
+        logger.info("加载参数：{}", instance);
     }
 
     private static void excelInsert(String key) throws IOException {
@@ -198,7 +228,8 @@ public class GuokeApplication {
                     groupOrders.add(orderListByName);
                 });
         for (List<CodeOrder> groupOrderSubList : groupOrders) {
-            Path path = Paths.get(outputPath).resolve(key).resolve(DateTools.currentDate() + groupOrderSubList.get(0).getName() + FileTools.FILE_TYPE_XLS);
+            Path path = Paths.get(outputPath).resolve(key)
+                    .resolve(DateTools.currentDate() + groupOrderSubList.get(0).getName() + FileTools.FILE_TYPE_XLS);
             DataPersistence dataPersistence = new ExcelPersistence(path);
             dataPersistence.save(groupOrderSubList);
         }

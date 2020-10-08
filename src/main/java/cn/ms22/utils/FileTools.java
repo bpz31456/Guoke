@@ -108,6 +108,9 @@ public final class FileTools {
             XSSFRow row = sheet.createRow(i);
             Field[] declaredFields = clazz.getDeclaredFields();
             CodeOrder entity = collection.get(i);
+            if (entity==null){
+                continue;
+            }
             for (int j = 0; j < declaredFields.length; j++) {
                 Field field = declaredFields[j];
                 //list扩展属性，直接加
@@ -120,7 +123,11 @@ public final class FileTools {
                 } else {
                     field.setAccessible(true);
                     XSSFCell cell = row.createCell(j);
-                    cell.setCellValue(String.valueOf(field.get(entity)));
+                    if (entity == null) {
+                        cell.setCellValue("空");
+                    } else {
+                        cell.setCellValue(String.valueOf(field.get(entity)));
+                    }
                 }
             }
         }

@@ -22,4 +22,16 @@ public final class DateTools {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
         return simpleDateFormat.format(date);
     }
+
+    public synchronized static String currentFormatTime(String ... format) {
+        Date date = new Date();
+        if(format.length==0){
+            SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+            return simpleDateFormat.format(date);
+        }else{
+            SimpleDateFormat simpleDateFormat = new SimpleDateFormat(format[0]);
+            return simpleDateFormat.format(date);
+        }
+
+    }
 }
